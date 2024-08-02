@@ -146,6 +146,8 @@ user_field.send_keys(os.getenv("SGI_USER"))
 password_field.send_keys(os.getenv("SGI_PASSWORD"))
 password_field.send_keys(Keys.RETURN)
 
+dates_already_visited = []
+
 for task, dates in data.items():
     # Select period
     period_select = Select(driver.find_element(by=By.NAME, value="perCodigo"))
@@ -170,8 +172,6 @@ for task, dates in data.items():
 
         index = 0
 
-        date_already_visited = False
-
         # For each hour in the current date
         while index < len(hours):
 
@@ -179,7 +179,7 @@ for task, dates in data.items():
             inputs = driver.find_elements(by=By.NAME, value="hora")
 
             # If it's the first time visiting the date, clear all inputs
-            if not date_already_visited:
+            if date not in dates_already_visited:
                 for input in inputs:
                     if input.get_attribute('value'):
                         input.clear()
@@ -188,7 +188,7 @@ for task, dates in data.items():
                     input.clear()
                     input.send_keys(hours[index])
                     index += 1
-                    date_already_visited = True
+                    dates_already_visited.append(date)
                     if index == len(hours):
                         break
             else: # If it's not the first time visiting the date, fill only the empty inputs
