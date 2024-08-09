@@ -27,4 +27,5 @@ Após instalar as dependências e atribuir as variáveis de ambiente, basta exec
 
 `$ python main.py`
 
-Ele consiste em logar no NetProject, ajustar o período, baixar um csv com todos apontamentos do período, tratar esses dados e inseri-los no SGI. Lembre-se de conferir se está tudo certo antes de submeter sua folha ao gestor.
+Ele consiste em logar no NetProject, ajustar o período, baixar um csv com todos apontamentos do período, tratar esses dados para o caso de multiplos apontamentos seguidos e inseri-los no SGI. Lembre-se de conferir se está tudo certo antes de submeter sua folha ao gestor.
+
