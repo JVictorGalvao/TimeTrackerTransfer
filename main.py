@@ -1,6 +1,6 @@
 import os
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import pprint
 from time import sleep
 
@@ -23,7 +23,8 @@ if os.path.exists('arquivo.csv'):
 
 # Date variables
 current_year = datetime.now().year
-previous_year = current_year # If the current month is january, the last month is december of the previous year
+# If the current month is january, the last month is december of the previous year
+previous_year = current_year
 current_month = datetime.now().month
 current_day = datetime.now().day if datetime.now().day <= 25 else 25
 previous_month = current_month - 1
@@ -40,16 +41,18 @@ options.add_argument("--disable-dev-shm-usage")
 options.add_argument("--no-sandbox")
 options.add_argument("--start-maximized")
 options.add_experimental_option("prefs", {
-    "download.default_directory": download_path, # Setting download path to current directory
+    # Setting download path to current directory
+    "download.default_directory": download_path,
     "download.prompt_for_download": False,
     "download.directory_upgrade": True,
     "safebrowsing.enabled": True
 })
 
 # Check README to see wich version of chromedriver is compatible with your browser
-driver = webdriver.Chrome(service=Service(ChromeDriverManager(driver_version=os.getenv("CHROMEDRIVE_VERSION")).install()), options=options)
+driver = webdriver.Chrome(service=Service(ChromeDriverManager(
+    driver_version=os.getenv("CHROMEDRIVE_VERSION")).install()), options=options)
 
-# # Access the Netproject website
+# Access the Netproject website
 driver.get("https://projetos.synchro.com.br")
 
 while True:
@@ -92,14 +95,15 @@ end_date = driver.find_element(by=By.ID, value="fim")
 end_date.clear()
 end_date.send_keys(f"{current_day}/{current_month}/{current_year}")
 
-finish_filter_button = driver.find_element(by=By.XPATH, value="//button[contains(text(), 'Filtrar')]")
+finish_filter_button = driver.find_element(
+    by=By.XPATH, value="//button[contains(text(), 'Filtrar')]")
 finish_filter_button.click()
 
 # Download the CSV report file
 csv_download_button = driver.find_element(by=By.ID, value="btn_csv")
 csv_download_button.click()
 
-sleep(2) # Wait for the download to finish
+sleep(2)  # Wait for the download to finish
 
 # Lê todas as linhas do arquivo CSV
 with open('arquivo.csv', 'r', encoding='ISO 8859-2') as file:
@@ -113,25 +117,50 @@ with open('arquivo.csv', 'w', encoding='ISO 8859-2') as file:
 
 dataframe = pd.read_csv('arquivo.csv', sep=';', encoding='iso-8859-2')
 
-task_list = dataframe['Projeto'].unique()
+day_list = dataframe['Dia'].unique()
+
+for index, day in enumerate(day_list):
+    day_list[index] = datetime.strptime(day, '%d/%m/%Y').strftime('%d/%m/%y')
 
 data = {}
 
-for task in task_list:
-    data[task] = {}
-    subdataframe = dataframe[dataframe['Projeto'] == task]
+for day in day_list:
+    # Converter o dia para o formato completo que está no DataFrame
+    day_formatted = datetime.strptime(day, '%d/%m/%y').strftime('%d/%m/%Y')
+
+    # Filtrar o DataFrame para o dia correspondente
+    subdataframe = dataframe[dataframe['Dia'] == day_formatted]
+
+    # Inicializar data[day] como uma lista vazia se não existir
+    if day not in data:
+        data[day] = []
+
+    previous_saida = None
 
     for index, row in subdataframe.iterrows():
-        date = datetime.strptime(row['Dia'], '%d/%m/%Y').strftime('%d/%m/%y')
+        entrada_str = row['Entrada']
+        saida_str = row['Saída']
 
-        if date not in data[task]:
-           data[task][date] = [row['Entrada'].replace(":", "h"), row['Saída'].replace(":", "h")]
+        # Converter entrada e saída para objetos datetime
+        entrada = datetime.strptime(entrada_str, '%H:%M')
+        saida = datetime.strptime(saida_str, '%H:%M')
+
+        if entrada == previous_saida:
+            data[day].pop()
+            data[day].append(saida.strftime('%Hh%M'))
+        elif previous_saida and (entrada - previous_saida) <= timedelta(minutes=2):
+            data[day].pop()
+            data[day].append(saida.strftime('%Hh%M'))
         else:
-            data[task][date].extend([row['Entrada'].replace(":", "h"), row['Saída'].replace(":", "h")])
+            data[day].extend(
+                [entrada.strftime('%Hh%M'), saida.strftime('%Hh%M')])
 
-    aux_value = data[task]
-    aux_key = task.split(' - ')[0]
-    data.pop(task)
+        # Atualizar previous_saida para a saída atual
+        previous_saida = saida
+
+    aux_value = data[day]
+    aux_key = day.split(' - ')[0]
+    data.pop(day)
     data[aux_key] = aux_value
 
 pprint.pprint(data)
@@ -146,85 +175,87 @@ user_field.send_keys(os.getenv("SGI_USER"))
 password_field.send_keys(os.getenv("SGI_PASSWORD"))
 password_field.send_keys(Keys.RETURN)
 
+# Select period
+period_select = Select(driver.find_element(by=By.NAME, value="perCodigo"))
+period_select.select_by_value(
+    f"{str(previous_year)[-2:]}{previous_month:02d}")
+
+# Select "Manter marcações de jornada"
+keep_schedule = driver.find_element(
+    by=By.XPATH, value="//input[@value='HoraEntrada']")
+keep_schedule.click()
+
+# Click on "Executar"
+execute_button = driver.find_element(by=By.NAME, value="go")
+execute_button.click()
+
 dates_already_visited = []
 
-for task, dates in data.items():
-    # Select period
-    period_select = Select(driver.find_element(by=By.NAME, value="perCodigo"))
-    period_select.select_by_value(f"{str(previous_year)[-2:]}{previous_month:02d}")
+# Iterate through each date at the current project code
+for date, hours in data.items():
+    edit_day_button = driver.find_element(
+        by=By.XPATH, value=f"//a[@href=\"javascript: submitform('{date}')\"]")
+    edit_day_button.click()
 
-    # Insert task code
-    task_field = driver.find_element(by=By.NAME, value="prjCodigoTxt")
-    task_field.send_keys(task)
+    index = 0
 
-    # Select "Manter marcações de jornada"
-    keep_schedule = driver.find_element(by=By.XPATH, value="//input[@value='HoraEntrada']")
-    keep_schedule.click()
+    # For each hour in the current date
+    while index < len(hours):
 
-    # Click on "Executar"
-    execute_button = driver.find_element(by=By.NAME, value="go")
-    execute_button.click()
+        # Get hour inputs
+        inputs = driver.find_elements(by=By.NAME, value="hora")
 
-    # Iterate through each date at the current project code
-    for date, hours in dates.items():
-        edit_day_button = driver.find_element(by=By.XPATH, value=f"//a[@href=\"javascript: submitform('{date}')\"]")
-        edit_day_button.click()
-
-        index = 0
-
-        # For each hour in the current date
-        while index < len(hours):
-
-            # Get hour inputs
-            inputs = driver.find_elements(by=By.NAME, value="hora")
-
-            # If it's the first time visiting the date, clear all inputs
-            if date not in dates_already_visited:
-                for input in inputs:
-                    if input.get_attribute('value'):
-                        input.clear()
-                        input.send_keys('00h00') # Set the default value at filled inputs to 00h00
-                for input in inputs:
+        # If it's the first time visiting the date, clear all inputs
+        if date not in dates_already_visited:
+            for input in inputs:
+                if input.get_attribute('value'):
+                    input.clear()
+                    # Set the default value at filled inputs to 00h00
+                    input.send_keys('00h00')
+            for input in inputs:
+                input.clear()
+                input.send_keys(hours[index])
+                index += 1
+                dates_already_visited.append(date)
+                if index == len(hours):
+                    break
+        else:  # If it's not the first time visiting the date, fill only the empty inputs
+            for input in inputs:
+                if not input.get_attribute('value') or input.get_attribute('value') == '00h00':
                     input.clear()
                     input.send_keys(hours[index])
                     index += 1
-                    dates_already_visited.append(date)
                     if index == len(hours):
                         break
-            else: # If it's not the first time visiting the date, fill only the empty inputs
-                for input in inputs:
-                    if not input.get_attribute('value') or input.get_attribute('value') == '00h00':
-                        input.clear()
-                        input.send_keys(hours[index])
-                        index += 1
-                        if index == len(hours):
-                            break
 
-            if index == len(hours): # If all hours were filled,
-                break
-            else: # If there are still hours to fill, click on "Gravar" and refresh this date to open new inputs
-                save_button = driver.find_element(by=By.XPATH, value="//input[@value='Gravar']")
-                save_button.click()
+        if index == len(hours):  # If all hours were filled,
+            break
+        else:  # If there are still hours to fill, click on "Gravar" and refresh this date to open new inputs
+            save_button = driver.find_element(
+                by=By.XPATH, value="//input[@value='Gravar']")
+            save_button.click()
 
-                driver.back()
-                driver.back()
-                driver.refresh()
+            driver.back()
+            driver.back()
+            driver.refresh()
 
-                edit_day_button = driver.find_element(by=By.XPATH, value=f"//a[@href=\"javascript: submitform('{date}')\"]")
-                edit_day_button.click()
-    
-        # Save the last filled hours
-        save_button = driver.find_element(by=By.XPATH, value="//input[@value='Gravar']")
-        save_button.click()
+            edit_day_button = driver.find_element(
+                by=By.XPATH, value=f"//a[@href=\"javascript: submitform('{date}')\"]")
+            edit_day_button.click()
 
-        # Go back to the dates page
-        driver.back()
-        driver.back()
-        driver.refresh()
+    # Save the last filled hours
+    save_button = driver.find_element(
+        by=By.XPATH, value="//input[@value='Gravar']")
+    save_button.click()
 
-    # Go back to the main page
+    # Go back to the dates page
+    driver.back()
     driver.back()
     driver.refresh()
+
+# Go back to the main page
+driver.back()
+driver.refresh()
 
 # Mark Logoff from SGI
 logoff = driver.find_element(by=By.XPATH, value="//input[@value='X']")
