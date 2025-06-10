@@ -15,11 +15,17 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
 # Verify if the file already exists
 if os.path.exists('arquivo.csv'):
     # Remove the file
     os.remove('arquivo.csv')
+
+if os.path.exists('Meus Apontamentos de Horas.xls'):
+    # Remove the file
+    os.remove('Meus Apontamentos de Horas.xls')
+
 
 # Date variables
 current_year = datetime.now().year
@@ -105,64 +111,272 @@ csv_download_button.click()
 
 sleep(2)  # Wait for the download to finish
 
-# Lê todas as linhas do arquivo CSV
-with open('arquivo.csv', 'r', encoding='ISO 8859-2') as file:
-    lines = file.readlines()
+# Access mikael
+driver.get("https://mikael.synchro.com.br/mikael/indexLogin.jsp")
 
-# Remove the last two lines (Trash)
-lines = lines[:-2]
+while True:
+    try:
+        element = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.ID, "loginForm:codlogin"))
+        )
+        print("Página carregada com sucesso")
+    except:
+        print("A página demorou muito para carregar: F5")
+        driver.refresh()
+        continue
+    break
 
-with open('arquivo.csv', 'w', encoding='ISO 8859-2') as file:
-    file.writelines(lines)
+# Login
+user_field = driver.find_element(by=By.ID, value="loginForm:codlogin")
+password_field = driver.find_element(by=By.ID, value="loginForm:password")
 
-dataframe = pd.read_csv('arquivo.csv', sep=';', encoding='iso-8859-2')
+user_field.send_keys(os.getenv("SGI_USER"))
+password_field.send_keys(os.getenv("SGI_PASSWORD"))
+password_field.send_keys(Keys.RETURN)
 
-day_list = dataframe['Dia'].unique()
+xpath_melhorado = "//span[normalize-space()='Apontamentos']"
+try:
+    wait = WebDriverWait(driver, 10)
+    menu = wait.until(
+        EC.element_to_be_clickable((By.XPATH, xpath_melhorado))
+    )
+    menu.click()
 
-for index, day in enumerate(day_list):
-    day_list[index] = datetime.strptime(day, '%d/%m/%Y').strftime('%d/%m/%y')
+except Exception as e:
+    print(f"Erro mesmo com XPath melhorado: {e}")
 
-data = {}
+xpath_melhorado = "//span[normalize-space()='Meus Apontamentos de Horas']"
+try:
+    wait = WebDriverWait(driver, 10)
+    menu = wait.until(
+        EC.element_to_be_clickable((By.XPATH, xpath_melhorado))
+    )
+    menu.click()
+    print("Elemento 'Apontamentos' encontrado com normalize-space() e clicado.")
 
-for day in day_list:
-    # Converter o dia para o formato completo que está no DataFrame
-    day_formatted = datetime.strptime(day, '%d/%m/%y').strftime('%d/%m/%Y')
+except Exception as e:
+    print(f"Erro mesmo com XPath melhorado: {e}")
 
-    # Filtrar o DataFrame para o dia correspondente
-    subdataframe = dataframe[dataframe['Dia'] == day_formatted]
+xpath_botao_pesquisar = "//img[contains(@src, 'exportar_excel.png')]"
+tentativas = 3  # Número de vezes que vamos tentar antes de desistir
 
-    # Inicializar data[day] como uma lista vazia se não existir
-    if day not in data:
-        data[day] = []
+for i in range(tentativas):
+    try:
+        # 1. Espera o elemento estar clicável (isso sempre busca o elemento mais recente)
+        wait = WebDriverWait(driver, 10)
+        botao = wait.until(
+            EC.element_to_be_clickable((By.XPATH, xpath_botao_pesquisar))
+        )
 
-    previous_saida = None
+        # 2. Tenta clicar
+        botao.click()
 
-    for index, row in subdataframe.iterrows():
-        entrada_str = row['Entrada']
-        saida_str = row['Saída']
+        # 3. Se o clique foi bem-sucedido, imprime e sai do laço
+        print(f"Botão de pesquisa clicado com sucesso na tentativa {i+1}.")
+        break  # Sai do 'for' loop
 
-        # Converter entrada e saída para objetos datetime
-        entrada = datetime.strptime(entrada_str, '%H:%M')
-        saida = datetime.strptime(saida_str, '%H:%M')
+    except StaleElementReferenceException:
+        # Se o elemento ficou obsoleto, o laço continua para a próxima tentativa
+        print(
+            f"Elemento obsoleto detectado (tentativa {i+1}/{tentativas}). Tentando novamente...")
+        # Uma pequena pausa pode ser útil em alguns casos, mas não é sempre necessária
+        # time.sleep(0.5)
 
-        if entrada == previous_saida:
-            data[day].pop()
-            data[day].append(saida.strftime('%Hh%M'))
-        elif previous_saida and (entrada - previous_saida) <= timedelta(minutes=2):
-            data[day].pop()
-            data[day].append(saida.strftime('%Hh%M'))
-        else:
-            data[day].extend(
-                [entrada.strftime('%Hh%M'), saida.strftime('%Hh%M')])
+    except TimeoutException:
+        # Se o elemento não for encontrado em 10 segundos, não adianta tentar de novo
+        print("Erro: O elemento não foi encontrado no tempo de espera. (TimeoutException)")
+        break
 
-        # Atualizar previous_saida para a saída atual
-        previous_saida = saida
+    except Exception as e:
+        # Pega outros erros inesperados
+        print(f"Ocorreu um erro inesperado: {e}")
+        break
 
-    aux_value = data[day]
-    aux_key = day.split(' - ')[0]
-    data.pop(day)
-    data[aux_key] = aux_value
+xpath_botao_pesquisar = "//img[contains(@src, 'excel.gif')]"
+tentativas = 3  # Número de vezes que vamos tentar antes de desistir
 
+for i in range(tentativas):
+    try:
+        # 1. Espera o elemento estar clicável (isso sempre busca o elemento mais recente)
+        wait = WebDriverWait(driver, 10)
+        botao = wait.until(
+            EC.element_to_be_clickable((By.XPATH, xpath_botao_pesquisar))
+        )
+
+        # 2. Tenta clicar
+        botao.click()
+
+        # 3. Se o clique foi bem-sucedido, imprime e sai do laço
+        print(f"Botão de pesquisa clicado com sucesso na tentativa {i+1}.")
+        break  # Sai do 'for' loop
+
+    except StaleElementReferenceException:
+        # Se o elemento ficou obsoleto, o laço continua para a próxima tentativa
+        print(
+            f"Elemento obsoleto detectado (tentativa {i+1}/{tentativas}). Tentando novamente...")
+        # Uma pequena pausa pode ser útil em alguns casos, mas não é sempre necessária
+        # time.sleep(0.5)
+
+    except TimeoutException:
+        # Se o elemento não for encontrado em 10 segundos, não adianta tentar de novo
+        print("Erro: O elemento não foi encontrado no tempo de espera. (TimeoutException)")
+        break
+
+    except Exception as e:
+        # Pega outros erros inesperados
+        print(f"Ocorreu um erro inesperado: {e}")
+        break
+sleep(2)
+
+
+def processar_arquivo_csv(caminho_csv):
+    """
+    Lê e processa o arquivo de ponto (CSV), consolidando blocos de tempo.
+    Retorna um dicionário com os dados processados.
+    """
+    print("--- Processando arquivo CSV... ---")
+    try:
+        # A sua lógica de limpeza prévia (pode ser melhorada, mas mantida por fidelidade)
+        with open(caminho_csv, 'r', encoding='ISO-8859-1') as file:
+            lines = file.readlines()
+        lines = lines[:-2]
+        with open(caminho_csv, 'w', encoding='ISO-8859-1') as file:
+            file.writelines(lines)
+
+        dataframe = pd.read_csv(caminho_csv, sep=';', encoding='iso-8859-1')
+        day_list = dataframe['Dia'].unique()
+
+        data = {}
+        for day in day_list:
+            day_key = datetime.strptime(day, '%d/%m/%Y').strftime('%d/%m/%y')
+            subdataframe = dataframe[dataframe['Dia'] == day]
+
+            if day_key not in data:
+                data[day_key] = []
+
+            previous_saida = None
+            for _, row in subdataframe.iterrows():
+                try:
+                    entrada = datetime.strptime(row['Entrada'], '%H:%M')
+                    saida = datetime.strptime(row['Saída'], '%H:%M')
+
+                    if previous_saida and (entrada - previous_saida) <= timedelta(minutes=2):
+                        data[day_key].pop()
+                        data[day_key].append(saida.strftime('%Hh%M'))
+                    else:
+                        data[day_key].extend(
+                            [entrada.strftime('%Hh%M'), saida.strftime('%Hh%M')])
+
+                    previous_saida = saida
+                except (ValueError, TypeError):
+                    continue  # Pula linhas com formato de hora inválido
+
+        print("Arquivo CSV processado com sucesso.")
+        return data
+
+    except FileNotFoundError:
+        print(f"AVISO: Arquivo CSV '{caminho_csv}' não encontrado. Pulando...")
+        return {}
+    except Exception as e:
+        print(f"ERRO ao processar o arquivo CSV: {e}")
+        return {}
+
+# ==============================================================================
+# FUNÇÃO 2: PROCESSA O ARQUIVO XLS (Nossa nova lógica de Início/Interrupção)
+# ==============================================================================
+
+
+def processar_arquivo_xls(caminho_xls):
+    """
+    Lê o arquivo de apontamentos (XLS), filtra por período e extrai os blocos
+    de trabalho baseados em início e interrupção.
+    """
+    data_inicio_filtro = pd.to_datetime(f"{previous_year}-{previous_month}-26")
+    data_fim_filtro = pd.to_datetime(f"{current_year}-{current_month}-25")
+    print("\n--- Processando arquivo XLS... ---")
+    try:
+        df = pd.read_excel(caminho_xls, skiprows=11)
+
+        # Prepara as colunas
+        nome_coluna_data = 'Data Inicial'
+        nome_coluna_hora = 'Hora Inicial'
+        nome_coluna_evento = 'Tarefa / Evento'
+
+        df[nome_coluna_data] = pd.to_datetime(
+            df[nome_coluna_data], errors='coerce')
+        # Remove linhas com data inválida
+        df.dropna(subset=[nome_coluna_data], inplace=True)
+
+        print(
+            f"Filtrando apontamentos de {data_inicio_filtro.date()} até {data_fim_filtro.date()}...")
+        df_filtrado = df[(df[nome_coluna_data] >= data_inicio_filtro) & (
+            df[nome_coluna_data] <= data_fim_filtro)].copy()
+
+        if df_filtrado.empty:
+            print("Nenhum registro encontrado no XLS para este intervalo de datas.")
+            return {}
+
+        # O restante do processamento agora usa o 'df_filtrado'
+        df_filtrado[nome_coluna_hora] = pd.to_datetime(
+            df_filtrado[nome_coluna_hora], format='%H:%M:%S', errors='coerce').dt.time
+        df_processado = df_filtrado.dropna(
+            subset=[nome_coluna_data, nome_coluna_hora]).copy()
+        df_processado['Timestamp'] = df_processado.apply(lambda r: pd.Timestamp.combine(
+            r[nome_coluna_data].date(), r[nome_coluna_hora]), axis=1)
+        df_processado = df_processado.sort_values(
+            'Timestamp').reset_index(drop=True)
+
+        df_processado['is_end'] = df_processado[nome_coluna_evento].str.contains(
+            "INTERRUPÇÃO DE TRABALHO", na=False)
+        df_processado['is_start'] = ~df_processado['is_end']
+        df_processado['block_id'] = df_processado['is_start'].cumsum()
+
+        data = {}
+        for _, group in df_processado.groupby('block_id'):
+            if group.iloc[-1]['is_end']:
+                inicio = group.iloc[0]['Timestamp']
+                fim = group.iloc[-1]['Timestamp']
+                day_key = inicio.strftime('%d/%m/%y')
+
+                if day_key not in data:
+                    data[day_key] = []
+
+                data[day_key].extend(
+                    [inicio.strftime('%Hh%M'), fim.strftime('%Hh%M')])
+
+        print("Arquivo XLS processado com sucesso.")
+        return data
+
+    except FileNotFoundError:
+        print(f"AVISO: Arquivo XLS '{caminho_xls}' não encontrado. Pulando...")
+        return {}
+    except Exception as e:
+        print(f"ERRO ao processar o arquivo XLS: {e}")
+        return {}
+
+
+# Defina os caminhos para os seus arquivos
+caminho_csv = 'arquivo.csv'
+# Use o caminho local do seu arquivo
+caminho_xls = 'Meus Apontamentos de Horas.xls'
+
+# Processa cada arquivo separadamente
+dados_csv = processar_arquivo_csv(caminho_csv)
+dados_xls = processar_arquivo_xls(caminho_xls)
+
+# Mescla os dois dicionários
+data = dados_csv.copy()  # Começa com os dados do CSV
+
+for dia, horarios in dados_xls.items():
+    if dia in data:
+        # Se o dia já existe, adiciona os novos horários e ordena
+        data[dia].extend(horarios)
+        data[dia].sort()
+    else:
+        # Se o dia não existe, simplesmente adiciona
+        data[dia] = horarios
+
+print("\n\n--- DADOS FINAIS MESCLADOS (CSV + XLS) ---")
 pprint.pprint(data)
 
 # Open SGI website
