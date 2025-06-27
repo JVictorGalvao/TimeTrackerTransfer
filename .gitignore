@@ -1,3 +1,7 @@
 arquivo.csv
 Meus Apontamentos de Horas.xls
 time_tracker
+__pycache__
+build
+dist
+TimeTrackerTransfer.spec
