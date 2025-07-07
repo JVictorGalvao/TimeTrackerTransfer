@@ -489,7 +489,6 @@ class AutomationApp:
         main_frame = tk.Frame(root, padx=10, pady=10)
         main_frame.pack(fill="both", expand=True)
 
-        # --- Seção de Período ---
         period_frame = tk.Frame(main_frame)
         period_frame.pack(fill="x", pady=(0, 10))
 
@@ -508,14 +507,10 @@ class AutomationApp:
             width=40
         )
 
-        # --- LÓGICA ATUALIZADA PARA SELECIONAR O PERÍODO CORRETO ---
         today = datetime.now()
-        # Se hoje for dia 25 ou antes, o período vigente termina neste mês.
         if today.day <= 25:
             end_date_default = today.replace(day=25)
-        # Se hoje for dia 26 ou depois, o período vigente termina no próximo mês.
         else:
-            # Adiciona dias suficientes para garantir que caia no próximo mês
             next_month_date = today + timedelta(days=35)
             end_date_default = next_month_date.replace(day=25)
 
@@ -528,13 +523,10 @@ class AutomationApp:
         if default_period_str in period_keys:
             self.period_combobox.set(default_period_str)
         elif period_keys:
-            # Caso o período calculado não exista (pouco provável), seleciona o mais recente da lista
             self.period_combobox.set(period_keys[-1])
-        # --- FIM DA LÓGICA ATUALIZADA ---
 
         self.period_combobox.pack(side="left", fill="x", expand=True)
 
-        # --- Seção de Credenciais ---
         credentials_frame = tk.LabelFrame(
             main_frame, text="Credenciais", padx=10, pady=10)
         credentials_frame.pack(fill="x")
@@ -580,7 +572,6 @@ class AutomationApp:
             command=self.toggle_sgi_password,
         ).grid(row=3, column=2, padx=5, sticky="w")
 
-        # Frame para o botão
         button_frame = tk.Frame(main_frame, pady=10)
         button_frame.pack(fill="x")
 
@@ -588,17 +579,43 @@ class AutomationApp:
             button_frame, text="Executar Automação", command=self.start_automation_thread)
         self.run_button.pack()
 
-        # Frame para o log
+        # --- SEÇÃO DO LOG MODIFICADA ---
         log_frame = tk.Frame(main_frame)
         log_frame.pack(fill="both", expand=True)
 
-        tk.Label(log_frame, text="Log de Execução:").pack(anchor="w")
+        # Frame para o título e o botão de copiar
+        log_header_frame = tk.Frame(log_frame)
+        log_header_frame.pack(fill="x")
+
+        tk.Label(log_header_frame, text="Log de Execução:").pack(side="left")
+
+        # NOVO BOTÃO "Copiar Log"
+        self.copy_log_button = ttk.Button(
+            log_header_frame, text="Copiar Log", command=self.copy_log_to_clipboard)
+        self.copy_log_button.pack(side="right")
+
+        # A janela de log agora volta a ser desabilitada para evitar qualquer problema,
+        # pois a cópia será feita pelo botão.
         self.log_text = scrolledtext.ScrolledText(
             log_frame, wrap=tk.WORD, state="disabled", height=10)
         self.log_text.pack(fill="both", expand=True)
+        # --- FIM DA SEÇÃO MODIFICADA ---
 
         self.log_queue = queue.Queue()
         self.root.after(100, self.process_log_queue)
+
+    # --- NOVA FUNÇÃO PARA O BOTÃO DE COPIAR ---
+    def copy_log_to_clipboard(self):
+        """Copia todo o conteúdo da caixa de log para a área de transferência."""
+        # Pega todo o texto do início (1.0) ao fim (END)
+        log_content = self.log_text.get(1.0, tk.END)
+        # Limpa a área de transferência do sistema
+        self.root.clipboard_clear()
+        # Adiciona o conteúdo do log à área de transferência
+        self.root.clipboard_append(log_content)
+        # Mostra uma mensagem de sucesso para o usuário
+        messagebox.showinfo(
+            "Copiado!", "O conteúdo do log foi copiado para a área de transferência.")
 
     def toggle_netproject_password(self):
         if self.netproject_show_pass_var.get():
@@ -630,6 +647,8 @@ class AutomationApp:
         period_data = self.periods_data[selected_period_str]
 
         self.run_button.config(state="disabled", text="Executando...")
+
+        # A lógica de limpeza do log volta ao normal (habilitar/desabilitar)
         self.log_text.config(state="normal")
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state="disabled")
@@ -646,6 +665,7 @@ class AutomationApp:
         try:
             while True:
                 msg = self.log_queue.get_nowait()
+                # A lógica de escrita no log volta ao normal (habilitar/desabilitar)
                 self.log_text.config(state="normal")
                 self.log_text.insert(tk.END, msg + "\n")
                 self.log_text.config(state="disabled")
